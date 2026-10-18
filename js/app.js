@@ -139,9 +139,10 @@ document.getElementById('saveWitnessTags').addEventListener('click',async()=>{
 
 const cloudGroup=document.createElement('div');cloudGroup.className='admin-group';
 cloudGroup.innerHTML='<h3>云端账户</h3><p class="admin-tip">资料公开可见，仅管理员登录后可修改。</p><button type="button" class="admin-save" id="cloudLogout">退出登录</button><p class="admin-tip">仅当此浏览器在当前网址保存过旧版资料时，才需要迁移。迁移不会删除本地原件。</p><button type="button" class="admin-save" id="cloudMigrate">迁移本浏览器旧资料到云端</button>';
+if(DetectiveCloud.isChild)cloudGroup.innerHTML='<h3>编辑会话</h3><p class="admin-tip">仅可编辑当前子链接的资料。布局和模板固定，无法分发其他链接。</p><button type="button" class="admin-save" id="cloudLogout">退出编辑</button>';
 document.querySelector('.admin-body').prepend(cloudGroup);
 document.getElementById('cloudLogout').onclick=async()=>{await DetectiveCloud.logout();closeAdmin()};
-document.getElementById('cloudMigrate').onclick=async()=>{try{await DetectiveCloud.migrateLocal()}catch(e){alert('迁移未全部完成：'+e.message+' 已成功的项目保留，原本地资料未删除。')}};
+if(document.getElementById('cloudMigrate'))document.getElementById('cloudMigrate').onclick=async()=>{try{await DetectiveCloud.migrateLocal()}catch(e){alert('迁移未全部完成：'+e.message+' 已成功的项目保留，原本地资料未删除。')}};
 function applyCloudText(){
  const content=DetectiveCloud.current();
  statementView.textContent=typeof content.statement==='string'?content.statement:defaultStatement;

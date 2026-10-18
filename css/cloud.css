@@ -59,3 +59,20 @@ button:disabled,
 input:disabled {
   cursor: wait;
 }
+
+.link-manager input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 8px 0 14px;
+  padding: 10px;
+  background: #07131a;
+  color: #d8e0e4;
+  border: 1px solid #657e89;
+  border-radius: 3px;
+  font: inherit;
+}
+.link-actions {display:flex;flex-wrap:wrap;gap:8px}
+.child-link-row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #657e8950}
+.child-link-row a {color:#c8d3d8;overflow-wrap:anywhere}
+#childResult[hidden], #cloudLogin label[hidden] {display:none}

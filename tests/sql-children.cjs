@@ -1,0 +1,53 @@
+// Actual shipped SQL in PostgreSQL; auth/storage are minimal Supabase fixtures.
+const {PGlite}=require(process.env.PGLITE_MODULE||'/tmp/homepage-validation/node_modules/@electric-sql/pglite');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const ROOT='12b1d5ba-432f-47b5-857d-793347769c16',A='00000000-0000-4000-8000-000000000001',B='00000000-0000-4000-8000-000000000002',NEW='00000000-0000-4000-8000-000000000003';
+(async()=>{const db=new PGlite();
+await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;
+create schema auth;create schema storage;
+create table auth.users(id uuid primary key,email text);
+insert into auth.users values ('${ROOT}','fuguang036@gmail.com'),('${A}','a@profiles.invalid'),('${B}','b@profiles.invalid'),('${NEW}','new@profiles.invalid');
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+grant usage on schema public,auth,storage to anon,authenticated,service_role;
+create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+create table storage.objects(bucket_id text,name text);
+alter table storage.objects enable row level security;
+grant select,insert,update,delete on storage.objects to anon,authenticated,service_role;
+create function storage.foldername(text) returns text[] language sql as $$select string_to_array($1,'/')$$;`);
+await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/01-install.sql'),'utf8'));
+await db.exec(`update public.detective_v13_page set content='{"statement":"main private custom content"}';insert into storage.objects values ('detective-v13-media','${ROOT}/original.jpg');`);
+const upgrade=fs.readFileSync(path.join(__dirname,'../supabase/02-children.sql'),'utf8');await db.exec(upgrade);await db.exec(upgrade);
+async function role(name,id=''){await db.exec(`reset role;set role ${name};select set_config('request.jwt.claim.sub','${id}',false)`)}
+async function denied(sql){let error;try{await db.exec(sql)}catch(e){error=e}assert(error,'Expected denial: '+sql)}
+await role('service_role');await db.exec(`select public.detective_v13_create_editor('child_a','${A}','a@profiles.invalid');select public.detective_v13_create_editor('child_b','${B}','b@profiles.invalid');`);
+assert.deepEqual((await db.query("select content from public.detective_v13_profiles where slug='child_a'")).rows[0].content,{});
+await denied(`select public.detective_v13_create_editor('child_a','${NEW}','new@profiles.invalid')`);
+await denied(`select public.detective_v13_create_editor('main','${NEW}','new@profiles.invalid')`);
+await role('anon');assert.equal((await db.query('select * from public.detective_v13_profiles')).rows.length,2);
+for(const q of ['select * from public.detective_v13_editors','select * from public.detective_v13_login_limits',`update public.detective_v13_profiles set content='{}'`,`select public.detective_v13_create_editor('child_c','${NEW}','new@profiles.invalid')`])await denied(q);
+await role('authenticated',A);await db.exec(`update public.detective_v13_profiles set content='{"statement":"child A","tags":["独立"]}' where slug='child_a'`);
+assert.equal((await db.query("update public.detective_v13_profiles set content='{}' where slug='child_b' returning slug")).rows.length,0);
+assert.equal((await db.query("update public.detective_v13_page set content='{}' returning id")).rows.length,0);
+for(const q of [`insert into public.detective_v13_profiles(slug,owner_id) values('child_c','${NEW}')`,`update public.detective_v13_profiles set owner_id='${B}' where slug='child_a'`,`update public.detective_v13_profiles set slug='new_slug' where slug='child_a'`,`update public.detective_v13_profiles set revision=900 where slug='child_a'`,`select public.detective_v13_create_editor('child_c','${NEW}','new@profiles.invalid')`,`select public.detective_v13_replace_editor('child_a','${A}','${NEW}','new@profiles.invalid')`,`select public.detective_v13_take_login_attempt('child_a')`,`select * from public.detective_v13_editors`,`update public.detective_v13_profiles set content='{"css":"body{}"}' where slug='child_a'`,`update public.detective_v13_profiles set content='{"tags":["标签超出四字"]}' where slug='child_a'`,`update public.detective_v13_profiles set content='{"media":{"witness-portrait":"https://evil.invalid/image.jpg"}}' where slug='child_a'`])await denied(q);
+const url='https://uzjvnbaspmnxmzdjwgtl.supabase.co/storage/v1/object/public/detective-v13-media/profiles/child_a/abcd.jpg';
+await db.exec(`insert into storage.objects values ('detective-v13-media','profiles/child_a/abcd.jpg');update public.detective_v13_profiles set content=jsonb_set(content,'{media}','{"witness-portrait":"${url}"}') where slug='child_a'`);
+await denied("insert into storage.objects values ('detective-v13-media','profiles/child_b/abcd.jpg')");
+await denied(`insert into storage.objects values ('detective-v13-media','${ROOT}/attack.jpg')`);
+assert.equal((await db.query(`delete from storage.objects where name='${ROOT}/original.jpg' returning name`)).rows.length,0);
+await role('authenticated',B);assert.equal((await db.query("delete from storage.objects where name='profiles/child_a/abcd.jpg' returning name")).rows.length,0);
+await role('service_role');for(let n=1;n<=21;n++)assert.equal((await db.query("select public.detective_v13_take_login_attempt('child_a') as ok")).rows[0].ok,n<=20);
+await db.exec("update public.detective_v13_login_limits set window_started_at=now()-interval '16 minutes'");assert.equal((await db.query("select public.detective_v13_take_login_attempt('child_a') as ok")).rows[0].ok,true);
+await db.exec(`select public.detective_v13_replace_editor('child_a','${A}','${NEW}','new@profiles.invalid')`);
+await denied(`select public.detective_v13_replace_editor('child_a','${A}','${B}','wrong@profiles.invalid')`);
+await role('authenticated',A);assert.equal((await db.query("update public.detective_v13_profiles set content='{}' where slug='child_a' returning slug")).rows.length,0);
+await denied("insert into storage.objects values ('detective-v13-media','profiles/child_a/old-token.jpg')");
+assert.equal((await db.query("delete from storage.objects where name='profiles/child_a/abcd.jpg' returning name")).rows.length,0);
+await role('authenticated',NEW);assert.equal((await db.query("select content from public.detective_v13_profiles where slug='child_a'")).rows[0].content.statement,'child A');
+assert.equal((await db.query("delete from storage.objects where name='profiles/child_a/abcd.jpg' returning name")).rows.length,1);
+await db.exec("insert into storage.objects values ('detective-v13-media','profiles/child_a/new-token.jpg')");
+await role('authenticated',ROOT);assert.equal((await db.query('select content from public.detective_v13_page')).rows[0].content.statement,'main private custom content');
+await denied(`select public.detective_v13_create_editor('child_c','${A}','a2@profiles.invalid')`); // Root also must use the verified backend.
+await db.exec("update public.detective_v13_page set content='{"+'"statement":"main still works"'+"}'");
+await role('anon');assert.equal((await db.query('select content from public.detective_v13_page')).rows[0].content.statement,'main still works');
+console.log('PASS: upgrade repeatability/main data preserved; blank child templates; public reads; child cannot edit main/other child, change ownership/slug/version, create descendants, call private RPCs, read identity directory, store layout or foreign media; per-profile Storage isolation; throttling; reset revokes old-token DB/Storage writes immediately and retains content/files. Embedded PostgreSQL.');await db.close();
+})().catch(e=>{console.error(e);process.exit(1)});

@@ -5,6 +5,14 @@
   const KEY = 'sb_publishable_qVLBVRMphdAIkkPVuX3j0g_R0rMnjMT';
   const OWNER = '12b1d5ba-432f-47b5-857d-793347769c16';
   const BUCKET = 'detective-v13-media';
+  const params = new URLSearchParams(location.search);
+  const isChild = params.has('profile');
+  const profile = isChild ? params.get('profile') : null;
+  const validProfile = !isChild || (params.getAll('profile').length === 1 && /^[a-z0-9][a-z0-9_-]{2,63}$/.test(profile || '') && !['main','root'].includes(profile));
+  const table = isChild ? 'detective_v13_profiles' : 'detective_v13_page';
+  const identityColumn = isChild ? 'slug' : 'id';
+  const identity = isChild ? profile : 1;
+  const mediaFolder = isChild ? 'profiles/' + profile : OWNER;
   let row = null, client = null, queue = Promise.resolve(), pending = 0;
   let loadPromise;
   const validKey = k => /^(?:[0-2]-[0-5]|witness-portrait|poster-cover-[0-2]|case-background-music)$/.test(k);
@@ -32,14 +40,14 @@
     if (!client) {
       if (!window.supabase?.createClient) throw Error('登录组件未能加载，请刷新页面后重试。');
       client = window.supabase.createClient(URL, KEY, {
-        auth: {storageKey:'detective-v13-auth', persistSession:true, autoRefreshToken:true, detectSessionInUrl:false},
+        auth: {storageKey:isChild ? 'detective-v13-auth-child:' + profile : 'detective-v13-auth', persistSession:true, autoRefreshToken:true, detectSessionInUrl:false},
         global: {fetch:timedFetch}
       });
     }
     return client;
   }
   function validateRow(value) {
-    if (!value || value.id !== 1 || value.owner_id !== OWNER || !Number.isSafeInteger(value.revision)
+    if (!value || value[identityColumn] !== identity || (isChild ? !/^[a-f0-9-]{36}$/.test(value.owner_id || '') : value.owner_id !== OWNER) || !Number.isSafeInteger(value.revision)
         || !value.content || typeof value.content !== 'object' || Array.isArray(value.content)) {
       throw Error('云端数据结构不匹配，请检查数据库安装结果。');
     }
@@ -52,12 +60,13 @@
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 20000);
       try {
-        const response = await fetch(URL + '/rest/v1/detective_v13_page?id=eq.1&select=id,owner_id,content,revision', {
+        if (!validProfile) throw Error('子链接编号无效，请使用主链接管理员提供的完整链接。');
+        const response = await fetch(URL + '/rest/v1/' + table + '?' + identityColumn + '=eq.' + encodeURIComponent(identity) + '&select=' + identityColumn + ',owner_id,content,revision', {
           headers:{apikey:KEY}, cache:'no-store', signal:controller.signal
         });
         if (!response.ok) throw Error('云端读取失败（' + response.status + '），请检查网络和数据库安装。');
         const data = await response.json();
-        if (!Array.isArray(data) || data.length !== 1) throw Error('没有找到云端资料，请先完成数据库安装。');
+        if (!Array.isArray(data) || data.length !== 1) throw Error(isChild ? '这个子链接不存在，请联系主链接管理员。' : '没有找到云端资料，请先完成数据库安装。');
         row = validateRow(data[0]);
         status(''); window.dispatchEvent(new Event('detective-cloud-loaded'));
         return row;
@@ -75,7 +84,7 @@
   async function owner() {
     current();
     const {data, error} = await sdk().auth.getSession();
-    if (error || !data.session || data.session.user.id !== OWNER) throw Error('请先使用管理员账号登录。');
+    if (error || !data.session || data.session.user.id !== row.owner_id) throw Error(isChild ? '请先用此子链接的编辑密码解锁。' : '请先使用管理员账号登录。');
     return data.session;
   }
   function enqueue(fn) {
@@ -90,15 +99,15 @@
   }
   async function commit(content) {
     const before = row;
-    const {data, error} = await sdk().from('detective_v13_page').update({content})
-      .eq('id', 1).eq('revision', before.revision).select('id,owner_id,content,revision');
+    const {data, error} = await sdk().from(table).update({content})
+      .eq(identityColumn, identity).eq('revision', before.revision).select(identityColumn + ',owner_id,content,revision');
     if (error) throw Error('云端保存失败：' + error.message);
     if (!data || data.length !== 1) throw Error('资料已被其他页面更新，或当前登录已失效。请先保留未保存文字，再重新读取后编辑。');
     row = validateRow(data[0]);
   }
   function publicPath(src) {
-    const prefix = URL + '/storage/v1/object/public/' + BUCKET + '/' + OWNER + '/';
-    return typeof src === 'string' && src.startsWith(prefix) ? OWNER + '/' + src.slice(prefix.length) : null;
+    const prefix = URL + '/storage/v1/object/public/' + BUCKET + '/' + mediaFolder + '/';
+    return typeof src === 'string' && src.startsWith(prefix) ? mediaFolder + '/' + src.slice(prefix.length) : null;
   }
   async function cleanup(src) {
     const path = publicPath(src);
@@ -133,7 +142,7 @@
       if (blob.size > 50 * 1024 * 1024) throw Error('单个文件不能超过 50 MB。');
       const ext = {'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif','image/avif':'avif',
         'audio/mpeg':'mp3','audio/mp4':'m4a','audio/aac':'aac','audio/ogg':'ogg','audio/wav':'wav','audio/x-wav':'wav','audio/webm':'webm'}[blob.type];
-      const path = OWNER + '/' + crypto.randomUUID() + '.' + ext;
+      const path = mediaFolder + '/' + crypto.randomUUID() + '.' + ext;
       const {error} = await sdk().storage.from(BUCKET).upload(path, blob, {contentType:blob.type, upsert:false});
       if (error) throw Error('文件上传失败：' + error.message);
       const src = URL + '/storage/v1/object/public/' + BUCKET + '/' + path;
@@ -156,12 +165,40 @@
   }
   async function signedIn() {
     const {data, error} = await sdk().auth.getSession();
-    return !error && data.session?.user.id === OWNER;
+    return !!row && !error && data.session?.user.id === row.owner_id;
   }
   const authOverlay = document.createElement('div');
   authOverlay.className = 'admin-overlay'; authOverlay.id = 'cloudLogin';
   authOverlay.innerHTML = '<section class="admin-panel" role="dialog" aria-modal="true" aria-labelledby="cloudLoginTitle"><header class="admin-header"><div><small>CONTROL ROOM / 027-A</small><h2 id="cloudLoginTitle">管理员登录</h2></div><button type="button" id="cloudLoginClose" aria-label="关闭登录">×</button></header><form class="admin-body" id="cloudLoginForm"><div class="admin-group"><label class="admin-label">邮箱<input id="cloudEmail" type="email" autocomplete="username" required></label><label class="admin-label">密码<input id="cloudPassword" type="password" autocomplete="current-password" required></label><p class="admin-tip" id="cloudLoginStatus" role="status">仅管理员可编辑，访客可以直接浏览。</p><button class="admin-save" type="submit" id="cloudLoginSubmit">登录</button></div></form></section>';
   document.body.append(authOverlay);
+  if (isChild) {
+    document.getElementById('cloudLoginTitle').textContent = '解锁编辑';
+    document.getElementById('cloudEmail').closest('label').hidden = true;
+    document.getElementById('cloudEmail').required = false;
+    document.getElementById('cloudPassword').autocomplete = 'off';
+    document.getElementById('cloudPassword').required = true;
+    document.getElementById('cloudLoginStatus').textContent = '输入此子链接的编辑密码，仅可修改这份资料。';
+    document.getElementById('cloudLoginSubmit').textContent = '解锁编辑';
+  }
+  async function access(action, payload = {}) {
+    const headers = {apikey:KEY, 'Content-Type':'application/json'};
+    if (action !== 'unlock') {
+      if (isChild) throw Error('只有主链接管理员可以管理子链接。');
+      const session = await owner(); headers.Authorization = 'Bearer ' + session.access_token;
+    }
+    const controller = new AbortController(); const timer = setTimeout(()=>controller.abort(),30000);
+    try {
+      const response = await fetch(URL + '/functions/v1/detective-access', {
+        method:'POST',headers,body:JSON.stringify({action,...payload}),signal:controller.signal
+      });
+      let data;try {data = await response.json();} catch (_) {throw Error('子链接服务返回异常，请检查 detective-access 函数部署。');}
+      if (!response.ok) throw Error(typeof data.error === 'string' ? data.error : '子链接服务尚未配置，请联系主链接管理员。');
+      return data;
+    } catch (error) {
+      if (error.name === 'AbortError') throw Error('子链接服务超时，操作结果尚未确认。请重新读取列表核对后再重试。');
+      throw error;
+    } finally {clearTimeout(timer);}
+  }
   let afterLogin;
   function closeLogin() {authOverlay.classList.remove('show'); document.getElementById('cloudPassword').value = ''; afterLogin = null;}
   document.getElementById('cloudLoginClose').onclick = closeLogin;
@@ -171,17 +208,27 @@
     e.preventDefault(); const button = document.getElementById('cloudLoginSubmit'); button.disabled = true;
     const label = document.getElementById('cloudLoginStatus'); label.textContent = '正在登录…';
     try {
-      const {data, error} = await sdk().auth.signInWithPassword({email:document.getElementById('cloudEmail').value.trim(), password:document.getElementById('cloudPassword').value});
+      let user;
+      if (isChild) {
+        const result = await access('unlock',{slug:profile,password:document.getElementById('cloudPassword').value});
+        if (!result.session?.access_token || !result.session?.refresh_token) throw Error('解锁结果异常，请重试。');
+        const {data,error} = await sdk().auth.setSession(result.session);
+        if (error || !data.session) throw Error('编辑会话未建立，请重试。');
+        await load(); user = data.user;
+      } else {
+        const {data, error} = await sdk().auth.signInWithPassword({email:document.getElementById('cloudEmail').value.trim(), password:document.getElementById('cloudPassword').value});
+        if (error) throw Error('登录失败，请检查邮箱和密码后重试。');
+        user = data.user;
+      }
       document.getElementById('cloudPassword').value = '';
-      if (error) throw Error('登录失败，请检查邮箱和密码后重试。');
-      if (data.user?.id !== OWNER) {await sdk().auth.signOut({scope:'local'}); throw Error('这个账号没有编辑权限。');}
+      if (user?.id !== row.owner_id) {await sdk().auth.signOut({scope:'local'}); throw Error('这个账号没有这份资料的编辑权限。');}
       const callback = afterLogin; closeLogin(); await callback?.();
-    } catch (error) {label.textContent = error.message;} finally {button.disabled = false;}
+    } catch (error) {document.getElementById('cloudPassword').value = '';label.textContent = error.message;} finally {button.disabled = false;}
   };
   async function edit(callback) {
     if (!row) await load();
     if (await signedIn()) {await callback(); return;}
-    afterLogin = callback; authOverlay.classList.add('show'); document.getElementById('cloudEmail').focus();
+    afterLogin = callback; authOverlay.classList.add('show'); document.getElementById(isChild ? 'cloudPassword' : 'cloudEmail').focus();
   }
   async function logout() {
     if (pending) throw Error('资料正在保存，请等待保存完成后再退出。');
@@ -195,6 +242,7 @@
   };
   // Preserve old local data until the owner explicitly chooses to migrate it.
   async function migrateLocal() {
+    if (isChild) throw Error('旧版主链接资料只能在主链接迁移。');
     await owner();
     if (!confirm('将本浏览器旧版资料复制到公开云端，并替换云端同名项目。原本地数据会保留。继续吗？')) return;
     let statement, tags;
@@ -225,6 +273,8 @@
     alert(count ? '已迁移 ' + count + ' 项到云端，原本地数据保留。' : '当前网址和浏览器没有找到旧版已保存资料。');
   }
   window.DetectiveCloud = {load, current, edit, logout, setText, putMedia, removeMedia, migrateLocal,
+    isChild, profile,
+    manageLinks:access,
     media:async k => {current();const src = row.content.media?.[k];return publicPath(src) ? src : null;},
     get pending() {return pending;}};
   window.addEventListener('beforeunload', e => {if(pending){e.preventDefault();e.returnValue='';}});
