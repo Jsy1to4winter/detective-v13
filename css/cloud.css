@@ -1,0 +1,61 @@
+/* 云端连接提示与登录表单 */
+.cloud-notice {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10000;
+  max-width: 650px;
+  margin: auto;
+  padding: 10px 14px;
+  background: #12222f;
+  color: #c8d3d8;
+  border: 1px solid #526775;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.cloud-notice[hidden],
+.cloud-notice button[hidden] {
+  display: none;
+}
+
+.cloud-notice button {
+  margin-left: 12px;
+  background: #243744;
+  color: inherit;
+  border: 1px solid #82949b;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.cloud-error {
+  border-color: #a85b68;
+}
+
+#cloudLogin .admin-panel {
+  max-width: 470px;
+}
+
+#cloudLogin input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 10px;
+  background: #07131a;
+  color: #d8e0e4;
+  border: 1px solid #657e89;
+  border-radius: 3px;
+  font: inherit;
+}
+
+#cloudLogin .admin-label {
+  display: block;
+  margin-bottom: 18px;
+}
+
+button:disabled,
+input:disabled {
+  cursor: wait;
+}
