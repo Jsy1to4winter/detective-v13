@@ -17,6 +17,7 @@ create function storage.foldername(text) returns text[] language sql as $$select
 await db.exec(fs.readFileSync(path.join(__dirname,'../supabase/01-install.sql'),'utf8'));
 await db.exec(`update public.detective_v13_page set content='{"statement":"main private custom content"}';insert into storage.objects values ('detective-v13-media','${ROOT}/original.jpg');`);
 const upgrade=fs.readFileSync(path.join(__dirname,'../supabase/02-children.sql'),'utf8');await db.exec(upgrade);await db.exec(upgrade);
+const titlesUpgrade=fs.readFileSync(path.join(__dirname,'../supabase/03-section-titles.sql'),'utf8');await db.exec(titlesUpgrade);await db.exec(titlesUpgrade);
 async function role(name,id=''){await db.exec(`reset role;set role ${name};select set_config('request.jwt.claim.sub','${id}',false)`)}
 async function denied(sql){let error;try{await db.exec(sql)}catch(e){error=e}assert(error,'Expected denial: '+sql)}
 await role('service_role');await db.exec(`select public.detective_v13_create_editor('child_a','${A}','a@profiles.invalid');select public.detective_v13_create_editor('child_b','${B}','b@profiles.invalid');`);
@@ -29,6 +30,9 @@ await role('authenticated',A);await db.exec(`update public.detective_v13_profile
 assert.equal((await db.query("update public.detective_v13_profiles set content='{}' where slug='child_b' returning slug")).rows.length,0);
 assert.equal((await db.query("update public.detective_v13_page set content='{}' returning id")).rows.length,0);
 for(const q of [`insert into public.detective_v13_profiles(slug,owner_id) values('child_c','${NEW}')`,`update public.detective_v13_profiles set owner_id='${B}' where slug='child_a'`,`update public.detective_v13_profiles set slug='new_slug' where slug='child_a'`,`update public.detective_v13_profiles set revision=900 where slug='child_a'`,`select public.detective_v13_create_editor('child_c','${NEW}','new@profiles.invalid')`,`select public.detective_v13_replace_editor('child_a','${A}','${NEW}','new@profiles.invalid')`,`select public.detective_v13_take_login_attempt('child_a')`,`select * from public.detective_v13_editors`,`update public.detective_v13_profiles set content='{"css":"body{}"}' where slug='child_a'`,`update public.detective_v13_profiles set content='{"tags":["标签超出四字"]}' where slug='child_a'`,`update public.detective_v13_profiles set content='{"media":{"witness-portrait":"https://evil.invalid/image.jpg"}}' where slug='child_a'`])await denied(q);
+await db.exec(`update public.detective_v13_profiles set content=jsonb_set(content,'{sectionTitles}','["介绍","作品","约定"]') where slug='child_a'`);
+assert.deepEqual((await db.query("select content from public.detective_v13_profiles where slug='child_a'")).rows[0].content.sectionTitles,['介绍','作品','约定']);
+for(const value of ['[]','["一","二"]','["一","二",4]','["一","二",""]','["一","二","1234567890123"]'])await denied(`update public.detective_v13_profiles set content=jsonb_set(content,'{sectionTitles}','${value}') where slug='child_a'`);
 const url='https://uzjvnbaspmnxmzdjwgtl.supabase.co/storage/v1/object/public/detective-v13-media/profiles/child_a/abcd.jpg';
 await db.exec(`insert into storage.objects values ('detective-v13-media','profiles/child_a/abcd.jpg');update public.detective_v13_profiles set content=jsonb_set(content,'{media}','{"witness-portrait":"${url}"}') where slug='child_a'`);
 await denied("insert into storage.objects values ('detective-v13-media','profiles/child_b/abcd.jpg')");

@@ -143,8 +143,33 @@ if(DetectiveCloud.isChild)cloudGroup.innerHTML='<h3>编辑会话</h3><p class="a
 document.querySelector('.admin-body').prepend(cloudGroup);
 document.getElementById('cloudLogout').onclick=async()=>{await DetectiveCloud.logout();closeAdmin()};
 if(document.getElementById('cloudMigrate'))document.getElementById('cloudMigrate').onclick=async()=>{try{await DetectiveCloud.migrateLocal()}catch(e){alert('迁移未全部完成：'+e.message+' 已成功的项目保留，原本地资料未删除。')}};
+const defaultSectionTitles=['话术','评价','须知'];
+const titleEditor=document.createElement('div');titleEditor.id='sectionTitleEditor';titleEditor.className='section-title-editor';
+for(let i=0;i<3;i++){
+ const label=document.createElement('label');label.className='admin-label';label.textContent='卷宗 '+(i+1)+' 标题';
+ const input=document.createElement('input');input.id='sectionTitle'+i;input.type='text';input.maxLength=12;input.value=defaultSectionTitles[i];input.setAttribute('aria-label','卷宗 '+(i+1)+' 标题');label.append(input);titleEditor.append(label);
+}
+const saveTitles=document.createElement('button');saveTitles.id='saveSectionTitles';saveTitles.className='admin-save';saveTitles.type='button';saveTitles.textContent='保存卷宗标题';
+const titleStatus=document.createElement('p');titleStatus.id='sectionTitleStatus';titleStatus.className='admin-tip';titleStatus.setAttribute('role','status');titleStatus.textContent='每个标题最多 12 字，主页入口和档案标题同步更新。';
+titleEditor.append(saveTitles,titleStatus);document.querySelector('.admin-switch').before(titleEditor);
+function applySectionTitles(){
+ const values=DetectiveCloud.current().sectionTitles;
+ for(let i=0;i<3;i++){
+  const title=Array.isArray(values)&&typeof values[i]==='string'&&values[i].trim()?values[i].trim().slice(0,12):defaultSectionTitles[i];
+  sections[i].name=title;document.getElementById('sectionTitle'+i).value=title;
+  const item=document.querySelector('[data-section="'+i+'"]');item.querySelector('.fname b').textContent=title;item.setAttribute('aria-label',title);
+  document.querySelector('[data-admin-section="'+i+'"]').textContent=title;
+ }
+ if(overlay.classList.contains('show'))document.getElementById('panelTitle').textContent=sections[active].name;
+}
+saveTitles.onclick=async()=>{
+ const values=[0,1,2].map(i=>document.getElementById('sectionTitle'+i).value.trim());saveTitles.disabled=true;titleStatus.textContent='正在保存标题…';
+ try{await DetectiveCloud.setText('sectionTitles',values);applySectionTitles();await renderCoverEditor();titleStatus.textContent='卷宗标题已保存到云端';}
+ catch(error){titleStatus.textContent=error.message;}finally{saveTitles.disabled=false;}
+};
 function applyCloudText(){
  const content=DetectiveCloud.current();
+ applySectionTitles();
  statementView.textContent=typeof content.statement==='string'?content.statement:defaultStatement;
  witnessTraitTags=Array.isArray(content.tags)?content.tags.filter(t=>typeof t==='string').slice(0,3).map(t=>t.slice(0,4)):['冷静','敏锐','独立'];
  renderWitnessTags();witnessTagInputs.forEach((el,i)=>el.value=witnessTraitTags[i]||'');

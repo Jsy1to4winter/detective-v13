@@ -158,9 +158,10 @@
     });
   }
   async function setText(field, value) {
-    if (!['statement','tags'].includes(field)) throw Error('无效资料字段。');
+    if (!['statement','tags','sectionTitles'].includes(field)) throw Error('无效资料字段。');
     if (field === 'statement' && (typeof value !== 'string' || value.length > 3000)) throw Error('证词最多 3000 字。');
     if (field === 'tags' && (!Array.isArray(value) || value.length > 3 || value.some(t => typeof t !== 'string' || t.length > 4))) throw Error('最多三个标签，每个最多四字。');
+    if (field === 'sectionTitles' && (!Array.isArray(value) || value.length !== 3 || value.some(t => typeof t !== 'string' || !t.trim() || t.length > 12))) throw Error('请填写三个卷宗标题，每个最多 12 字。');
     return enqueue(() => commit({...current(), [field]:value}));
   }
   async function signedIn() {

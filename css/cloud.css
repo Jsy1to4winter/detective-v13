@@ -60,7 +60,7 @@ input:disabled {
   cursor: wait;
 }
 
-.link-manager input {
+.link-manager input, .section-title-editor input {
   display: block;
   box-sizing: border-box;
   width: 100%;

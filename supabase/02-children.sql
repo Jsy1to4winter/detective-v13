@@ -14,7 +14,7 @@ returns boolean language plpgsql immutable set search_path='' as $$
 declare item jsonb; entry record; prefix text;
 begin
   if jsonb_typeof(p_content) is distinct from 'object'
-    or (p_content - 'statement' - 'tags' - 'media') <> '{}'::jsonb then return false; end if;
+    or (p_content - 'statement' - 'tags' - 'media' - 'sectionTitles') <> '{}'::jsonb then return false; end if;
   if p_content ? 'statement' then
     if jsonb_typeof(p_content->'statement') is distinct from 'string'
       or char_length(p_content->>'statement') > 3000 then return false; end if;
@@ -24,6 +24,14 @@ begin
     if jsonb_array_length(p_content->'tags') > 3 then return false; end if;
     for item in select value from jsonb_array_elements(p_content->'tags') loop
       if jsonb_typeof(item) <> 'string' or char_length(item #>> '{}') > 4 then return false; end if;
+    end loop;
+  end if;
+  if p_content ? 'sectionTitles' then
+    if jsonb_typeof(p_content->'sectionTitles') is distinct from 'array' then return false; end if;
+    if jsonb_array_length(p_content->'sectionTitles') <> 3 then return false; end if;
+    for item in select value from jsonb_array_elements(p_content->'sectionTitles') loop
+      if jsonb_typeof(item) <> 'string' or char_length(btrim(item #>> '{}')) = 0
+        or char_length(item #>> '{}') > 12 then return false; end if;
     end loop;
   end if;
   if p_content ? 'media' then
