@@ -1,3 +1,6 @@
-[functions.detective-access]
+[functions.smart-service]
 # Unlock precedes login; admin requests verify bearer tokens inside the handler.
 verify_jwt = false
+
+# Keep the tested source entry while using the deployed endpoint name.
+entrypoint = "./functions/detective-access/index.ts"

@@ -21,14 +21,14 @@ GitHub 仓库 Settings → Pages → Source 选择 **Deploy from a branch**，Br
 ### 启用子链接服务（项目所有者操作）
 
 1. 在同一个 Supabase 项目的 SQL Editor 新建查询，执行 **`supabase/02-children.sql` 全部内容**。成功结果为 `detective-v13 child links installed`。该升级可重复执行，不清空现有主链接资料。
-2. 进入 Edge Functions，创建函数，名称为 **`detective-access`**。使用网页编辑器，将 **`supabase/detective-access-dashboard.ts` 全部内容**粘贴到 `index.ts`，替换示例，部署。
+2. 进入 Edge Functions，创建函数，名称为 **`smart-service`**（当前项目已按此名称部署，无需重建）。使用网页编辑器，将 **`supabase/detective-access-dashboard.ts` 全部内容**粘贴到 `index.ts`，替换示例，部署。
 3. 在该函数设置中关闭 **Verify JWT / Verify JWT with legacy secret**。子链接解锁在登录前调用；创建、读取列表和重置在函数内部通过 Supabase Auth 验证 Bearer token 并核对固定主账号 UID，子账号会收到 403。
 4. 无需在网页或聊天中填写服务端密钥。函数使用 Supabase 平台内置的 `SUPABASE_URL`、`SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`。
 5. 返回主链接，刷新后登录，在“分发专属子链接”创建一份测试链接。无痕窗口打开子链接，使用它的编辑密码保存，再核对其他链接未变化。
 
-也可在已授权的 Supabase CLI 中执行 `supabase functions deploy detective-access --no-verify-jwt`。测试所用 Edge Function 真实处理器位于 `supabase/functions/detective-access/handler.mjs`，网页粘贴版由 `python scripts/prepare-deployment.py` 同步生成。
+也可在已授权的 Supabase CLI 中执行 `supabase functions deploy smart-service --no-verify-jwt`。测试所用 Edge Function 真实处理器位于 `supabase/functions/detective-access/handler.mjs`，网页粘贴版由 `python scripts/prepare-deployment.py` 同步生成。
 
-在后端升级完成前，主链接既有编辑功能继续使用原表；新分发功能会提示服务尚未安装。网站代码的 Git 提交不会替用户执行真实项目 SQL 或部署 Edge Function。
+在后端升级完成前，主链接既有编辑功能继续使用原表；新分发功能会提示服务尚未安装。网站代码的 Git 提交不会替用户执行真实项目 SQL 或部署 Edge Function。网页调用 `/functions/v1/smart-service`；函数源文件仍保留 detective-access 命名，由 config.toml 的 entrypoint 指定。修改控制台显示名称不会改变实际接口路径。
 
 ## 云端存储
 

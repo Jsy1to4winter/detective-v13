@@ -188,10 +188,10 @@
     }
     const controller = new AbortController(); const timer = setTimeout(()=>controller.abort(),30000);
     try {
-      const response = await fetch(URL + '/functions/v1/detective-access', {
+      const response = await fetch(URL + '/functions/v1/smart-service', {
         method:'POST',headers,body:JSON.stringify({action,...payload}),signal:controller.signal
       });
-      let data;try {data = await response.json();} catch (_) {throw Error('子链接服务返回异常，请检查 detective-access 函数部署。');}
+      let data;try {data = await response.json();} catch (_) {throw Error('子链接服务返回异常，请检查 smart-service 函数部署。');}
       if (!response.ok) throw Error(typeof data.error === 'string' ? data.error : '子链接服务尚未配置，请联系主链接管理员。');
       return data;
     } catch (error) {

@@ -18,7 +18,7 @@ const admin={from(table){let filter;assert.equal(table,'detective_v13_editors');
 };
 const publicClient={auth:{async signInWithPassword({email,password}){const u=[...users.values()].find(u=>u.email===email&&u.password===password&&!u.banned);return u?{data:{session:session(u)}}:{error:{message:'Invalid credentials'},data:{}}}}};
 (async()=>{const {createHandler}=await import('../supabase/functions/detective-access/handler.mjs');const handler=createHandler({createClient:(url,key)=>key==='service-test'?admin:publicClient,env:{get:n=>({SUPABASE_URL:HOST,SUPABASE_ANON_KEY:'public-test',SUPABASE_SERVICE_ROLE_KEY:'service-test'})[n]},logger:{error(){},warn(){}}});
-async function direct(body,t){const r=await handler(new Request(HOST+'/functions/v1/detective-access',{method:'POST',headers:{'content-type':'application/json',...(t?{authorization:'Bearer '+t}:{})},body:JSON.stringify(body)}));return {status:r.status,data:await r.json()}}
+async function direct(body,t){const r=await handler(new Request(HOST+'/functions/v1/smart-service',{method:'POST',headers:{'content-type':'application/json',...(t?{authorization:'Bearer '+t}:{})},body:JSON.stringify(body)}));return {status:r.status,data:await r.json()}}
 assert.equal((await direct({action:'create',slug:'child_a',password:'child-a-password'})).status,401);
 assert.equal((await direct({action:'create',slug:'main',password:'child-a-password'},token(ROOT))).status,400);
 assert.equal((await direct({action:'create',slug:'child_a',password:'short'},token(ROOT))).status,400);
@@ -28,7 +28,7 @@ async function context(){const c=await browser.newContext();c.setDefaultTimeout(
  const req=route.request(),u=new URL(req.url()),headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','content-type':'application/json'};const reply=(body,status=200)=>route.fulfill({status,headers,body:JSON.stringify(body)});
  if(req.method()==='OPTIONS')return reply({});
  const bearer=req.headers().authorization?.replace(/^Bearer /,'');const auth=userFor(bearer);
- if(u.pathname==='/functions/v1/detective-access'){const r=await handler(new Request(req.url(),{method:'POST',headers:req.headers(),body:req.postData()}));return route.fulfill({status:r.status,headers:Object.fromEntries(r.headers),body:await r.text()})}
+ if(u.pathname==='/functions/v1/smart-service'){const r=await handler(new Request(req.url(),{method:'POST',headers:req.headers(),body:req.postData()}));return route.fulfill({status:r.status,headers:Object.fromEntries(r.headers),body:await r.text()})}
  if(u.pathname==='/auth/v1/token'){const body=req.postDataJSON();let user;if(body.grant_type==='refresh_token')user=null;else user=[...users.values()].find(x=>x.email===body.email&&x.password===body.password&&!x.banned);return user?reply(session(user)):reply({msg:'Invalid credentials'},400)}
  if(u.pathname==='/auth/v1/user')return auth?reply({id:auth.id,email:auth.email,aud:'authenticated',role:'authenticated'}):reply({},401);
  if(u.pathname==='/auth/v1/logout')return reply({});
