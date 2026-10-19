@@ -76,3 +76,8 @@ input:disabled {
 .child-link-row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #657e8950}
 .child-link-row a {color:#c8d3d8;overflow-wrap:anywhere}
 #childResult[hidden], #cloudLogin label[hidden] {display:none}
+
+.media-feedback {position:absolute;left:5px;right:5px;bottom:6px;z-index:4;display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px;color:#c8d3d8;background:#091622e8;text-align:center;font-size:10px;line-height:1.5}
+.media-feedback[hidden], .media-feedback button[hidden] {display:none}
+.media-feedback button {padding:5px 8px;border:1px solid #657e89;color:#d8e0e4;background:#12222f;font:inherit;cursor:pointer}
+.admin-slot,.cover-edit {position:relative}

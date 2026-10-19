@@ -15,6 +15,7 @@
   const mediaFolder = isChild ? 'profiles/' + profile : OWNER;
   let row = null, client = null, queue = Promise.resolve(), pending = 0;
   let loadPromise;
+  let readFailed = false;
   const validKey = k => /^(?:[0-2]-[0-5]|witness-portrait|poster-cover-[0-2]|case-background-music)$/.test(k);
   const notice = document.createElement('div');
   notice.className = 'cloud-notice';
@@ -55,27 +56,63 @@
   }
   async function load() {
     if (loadPromise) return loadPromise;
-    loadPromise = (async () => {
+    // Defer the body so even an immediate validation error releases this lock.
+    loadPromise = Promise.resolve().then(async () => {
       status('正在读取云端资料…');
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20000);
       try {
         if (!validProfile) throw Error('子链接编号无效，请使用主链接管理员提供的完整链接。');
-        const response = await fetch(URL + '/rest/v1/' + table + '?' + identityColumn + '=eq.' + encodeURIComponent(identity) + '&select=' + identityColumn + ',owner_id,content,revision', {
-          headers:{apikey:KEY}, cache:'no-store', signal:controller.signal
-        });
-        if (!response.ok) throw Error('云端读取失败（' + response.status + '），请检查网络和数据库安装。');
-        const data = await response.json();
-        if (!Array.isArray(data) || data.length !== 1) throw Error(isChild ? '这个子链接不存在，请联系主链接管理员。' : '没有找到云端资料，请先完成数据库安装。');
-        row = validateRow(data[0]);
-        status(''); window.dispatchEvent(new Event('detective-cloud-loaded'));
+        let next;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (attempt) {
+            status('网络不稳定，正在重新读取云端资料（' + (attempt + 1) + '/3）…');
+            await new Promise(resolve => setTimeout(resolve, attempt * 400));
+          }
+          try {next = await readOnce(); break;}
+          catch (error) {if (!error.retryable || attempt === 2) throw error;}
+        }
+        const changed = !row || row.revision !== next.revision || row.owner_id !== next.owner_id;
+        row = next; readFailed = false;
+        status('');
+        // Focus/pageshow often fire together in WeChat. Do not rebuild images
+        // or discard editor inputs when the server returned the same revision.
+        if (changed) window.dispatchEvent(new Event('detective-cloud-loaded'));
         return row;
       } catch (error) {
-        const e = error.name === 'AbortError' ? Error('云端读取超时，请检查网络后重新读取。') : error;
-        status(e.message || '云端读取失败，请检查网络。', true); throw e;
-      } finally {clearTimeout(timer); loadPromise = null;}
-    })();
+        readFailed = true;
+        status((row ? '当前显示上次读取的资料，更新未成功。' : '') + (error.message || '云端读取失败，请检查网络。'), true);
+        window.dispatchEvent(new Event('detective-cloud-error'));
+        throw error;
+      }
+    }).finally(() => {loadPromise = null;});
     return loadPromise;
+  }
+  async function readOnce() {
+    const controller = new AbortController(); let timer;
+    const timeout = new Promise((_,reject) => {
+      timer = setTimeout(() => {
+        const error = Error('云端读取超时，请检查网络后重新读取。'); error.retryable = true;
+        reject(error); controller.abort();
+      },8000);
+    });
+    const request = (async () => {
+      const response = await fetch(URL + '/rest/v1/' + table + '?' + identityColumn + '=eq.' + encodeURIComponent(identity) + '&select=' + identityColumn + ',owner_id,content,revision', {
+        headers:{apikey:KEY}, cache:'no-store', signal:controller.signal
+      });
+      if (!response.ok) {
+        const error = Error('云端读取失败（' + response.status + '），请检查网络后重试。');
+        error.retryable = [408,429,500,502,503,504].includes(response.status); throw error;
+      }
+      const data = await response.json();
+      if (!Array.isArray(data) || data.length !== 1) throw Error(isChild ? '这个子链接不存在，请联系主链接管理员。' : '没有找到云端资料，请先完成数据库安装。');
+      return validateRow(data[0]);
+    })();
+    try {return await Promise.race([request,timeout]);}
+    catch (error) {
+      if (error instanceof TypeError || error.name === 'AbortError') {
+        const network = Error('云端读取失败，网络连接中断，请重试。'); network.retryable = true; throw network;
+      }
+      throw error;
+    } finally {clearTimeout(timer);}
   }
   function current() {
     if (!row) throw Error('云端资料尚未读取成功，请先重新读取。');
@@ -227,7 +264,8 @@
     } catch (error) {document.getElementById('cloudPassword').value = '';label.textContent = error.message;} finally {button.disabled = false;}
   };
   async function edit(callback) {
-    if (!row) await load();
+    if (loadPromise) await loadPromise;
+    if (!row || readFailed) await load();
     if (await signedIn()) {await callback(); return;}
     afterLogin = callback; authOverlay.classList.add('show'); document.getElementById(isChild ? 'cloudPassword' : 'cloudEmail').focus();
   }
@@ -277,10 +315,15 @@
     isChild, profile,
     manageLinks:access,
     media:async k => {current();const src = row.content.media?.[k];return publicPath(src) ? src : null;},
+    get hasLoaded() {return !!row;},
+    get readError() {return readFailed;},
     get pending() {return pending;}};
   window.addEventListener('beforeunload', e => {if(pending){e.preventDefault();e.returnValue='';}});
   window.addEventListener('unhandledrejection', e => {e.preventDefault(); alert(e.reason?.message || '操作失败，请检查网络后重试。');});
-  document.addEventListener('visibilitychange', () => {
+  function refreshWhenVisible() {
     if (!document.hidden && !pending && !document.querySelector('.admin-overlay.show')) load().catch(()=>{});
-  });
+  }
+  document.addEventListener('visibilitychange',refreshWhenVisible);
+  window.addEventListener('pageshow',e=>{if(e.persisted || readFailed)refreshWhenVisible();});
+  window.addEventListener('online',refreshWhenVisible);
 })();

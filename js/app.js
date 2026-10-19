@@ -6,15 +6,29 @@ async function getImage(k){return DetectiveCloud.media(k)}
 async function putImage(k,v){return DetectiveCloud.putMedia(k,v)}
 async function delImage(k){return DetectiveCloud.removeMedia(k)}
 function compress(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(Error('图片读取失败'));reader.onload=()=>{let im=new Image();im.onerror=()=>reject(Error('图片格式无法读取'));im.onload=()=>{let scale=Math.min(1,1250/Math.max(im.width,im.height));let c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*scale));c.height=Math.max(1,Math.round(im.height*scale));c.getContext('2d').drawImage(im,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.82))};im.src=reader.result};reader.readAsDataURL(file)})}
-async function render(){let a=active;slots.replaceChildren();for(let i=0;i<6;i++){let el=document.createElement('div');el.className='slot';el.innerHTML='<div class="idx">附件 0'+(i+1)+'</div><span>＋</span><div>待归档</div><div>EXHIBIT / 0'+(i+1)+'</div>';slots.appendChild(el);let pic=await getImage(a+'-'+i);if(active!==a)return;if(pic){el.innerHTML='<img alt="已上传证物图片"><div class="idx">EVIDENCE 0'+(i+1)+'</div>';el.querySelector('img').src=pic;el.querySelector('img').onclick=()=>{document.getElementById('largeImage').src=pic;lightbox.classList.add('show')};}}}
-function openPanel(n){active=n;document.getElementById('panelTitle').textContent=sections[n].name;document.getElementById('panelDesc').textContent=sections[n].desc;document.getElementById('panelNumber').textContent='EVIDENCE / 00'+(n+1);overlay.classList.add('show');overlay.setAttribute('aria-hidden','false');render()};document.querySelectorAll('.fitem').forEach(el=>el.onclick=()=>openPanel(Number(el.dataset.section)));function close(){overlay.classList.remove('show');overlay.setAttribute('aria-hidden','true')};document.getElementById('close').onclick=close;overlay.onclick=e=>{if(e.target===overlay)close()};document.getElementById('lightClose').onclick=()=>lightbox.classList.remove('show');lightbox.onclick=e=>{if(e.target===lightbox)lightbox.classList.remove('show')};document.onkeydown=e=>{if(e.key==='Escape'){lightbox.classList.remove('show');close()}};
+let renderVersion=0,adminRenderVersion=0,coverRenderVersion=0;
+async function render(){
+ const version=++renderVersion,a=active;slots.replaceChildren();
+ for(let i=0;i<6;i++){
+  const el=document.createElement('div');el.className='slot';
+  el.innerHTML='<div class="idx">附件 0'+(i+1)+'</div><span>＋</span><div>'+ (DetectiveCloud.hasLoaded?'待归档':DetectiveCloud.readError?'资料未读取，请点下方重新读取':'资料读取中…')+'</div><div>EXHIBIT / 0'+(i+1)+'</div>';slots.appendChild(el);
+  if(!DetectiveCloud.hasLoaded)continue;
+  const pic=await getImage(a+'-'+i);if(version!==renderVersion)return;
+  if(pic){
+   el.innerHTML='<img alt="已上传证物图片"><div class="idx">EVIDENCE 0'+(i+1)+'</div>';
+   const img=el.querySelector('img');DetectiveImages.bind(img,pic,el);
+   img.onclick=()=>{lightbox.classList.add('show');DetectiveImages.bind(document.getElementById('largeImage'),pic,lightbox)};
+  }
+ }
+}
+function openPanel(n){active=n;document.getElementById('panelTitle').textContent=sections[n].name;document.getElementById('panelDesc').textContent=sections[n].desc;document.getElementById('panelNumber').textContent='EVIDENCE / 00'+(n+1);overlay.classList.add('show');overlay.setAttribute('aria-hidden','false');render()};document.querySelectorAll('.fitem').forEach(el=>el.onclick=()=>openPanel(Number(el.dataset.section)));function close(){renderVersion++;overlay.classList.remove('show');overlay.setAttribute('aria-hidden','true')};document.getElementById('close').onclick=close;overlay.onclick=e=>{if(e.target===overlay)close()};document.getElementById('lightClose').onclick=()=>lightbox.classList.remove('show');lightbox.onclick=e=>{if(e.target===lightbox)lightbox.classList.remove('show')};document.onkeydown=e=>{if(e.key==='Escape'){lightbox.classList.remove('show');close()}};
 
 // 证人照片独立存储，与三个板块的十八张图片互不干扰。
 const witnessInput=document.getElementById('witnessInput'),witnessPhoto=document.getElementById('witnessPhoto'),witnessImg=document.getElementById('witnessImg');
 function witnessPick(){witnessInput.click()}
 document.getElementById('witnessUploadBtn').onclick=witnessPick;
-async function loadWitness(){const pic=await getImage('witness-portrait');witnessImg.hidden=!pic;document.querySelector('.witness-placeholder').hidden=!!pic;if(pic)witnessImg.src=pic;else witnessImg.removeAttribute('src')}
-witnessInput.onchange=async e=>{const f=e.target.files[0];if(!f)return;const src=await putImage('witness-portrait',await compress(f));witnessImg.src=src;witnessImg.hidden=false;document.querySelector('.witness-placeholder').hidden=true;witnessInput.value=''};
+async function loadWitness(){const pic=await getImage('witness-portrait');witnessImg.hidden=!pic;document.querySelector('.witness-placeholder').hidden=!!pic;if(pic)DetectiveImages.bind(witnessImg,pic,witnessPhoto);else{DetectiveImages.clear(witnessImg);witnessImg.removeAttribute('src')}}
+witnessInput.onchange=async e=>{const f=e.target.files[0];if(!f)return;const src=await putImage('witness-portrait',await compress(f));witnessImg.hidden=false;DetectiveImages.bind(witnessImg,src,witnessPhoto);document.querySelector('.witness-placeholder').hidden=true;witnessInput.value=''};
 const statementView=document.getElementById('statementView'),statementEdit=document.getElementById('statementEdit'),statementControls=document.getElementById('statementControls'),editStatement=document.getElementById('editStatement');
 const defaultStatement=statementView.textContent;
 function closeEditor(){statementEdit.hidden=true;statementControls.hidden=true;statementView.hidden=false;editStatement.hidden=false}
@@ -47,10 +61,10 @@ const adminOverlay=document.getElementById('adminOverlay');let adminActive=0;
 document.getElementById('masterEdit').onclick=()=>DetectiveCloud.edit(()=>{close();adminOverlay.classList.add('show');adminOverlay.setAttribute('aria-hidden','false');document.getElementById('adminStatement').value=statementView.textContent;renderAdminSlots();renderCoverEditor()});
 function closeAdmin(){adminOverlay.classList.remove('show');adminOverlay.setAttribute('aria-hidden','true')}
 document.getElementById('adminClose').onclick=closeAdmin;adminOverlay.addEventListener('click',e=>{if(e.target===adminOverlay)closeAdmin()});
-document.getElementById('adminWitnessUpload').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;const result=await putImage('witness-portrait',await compress(f));witnessImg.src=result;witnessImg.hidden=false;document.querySelector('.witness-placeholder').hidden=true;e.target.value=''});
+document.getElementById('adminWitnessUpload').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;const result=await putImage('witness-portrait',await compress(f));witnessImg.hidden=false;DetectiveImages.bind(witnessImg,result,witnessPhoto);document.querySelector('.witness-placeholder').hidden=true;e.target.value=''});
 document.getElementById('adminSaveStatement').onclick=async()=>{const val=document.getElementById('adminStatement').value;await DetectiveCloud.setText('statement',val);statementView.textContent=val;alert('证词已保存到云端')};
 document.querySelectorAll('[data-admin-section]').forEach(btn=>btn.addEventListener('click',()=>{adminActive=+btn.dataset.adminSection;document.querySelectorAll('[data-admin-section]').forEach(x=>x.classList.toggle('selected',x===btn));renderAdminSlots()}));
-async function renderAdminSlots(){const a=adminActive;const host=document.getElementById('adminSlots');host.replaceChildren();for(let i=0;i<6;i++){const el=document.createElement('div');el.className='admin-slot';const current=await getImage(a+'-'+i);if(a!==adminActive)return;const title=document.createElement('div');title.textContent='FILE '+(a+1)+' / '+String(i+1).padStart(2,'0');title.style.fontSize='10px';el.appendChild(title);if(current){const im=document.createElement('img');im.src=current;im.alt='第'+(i+1)+'张证物';el.appendChild(im)}else{let empty=document.createElement('div');empty.className='admin-empty';empty.textContent='＋ 添加图片';el.appendChild(empty)}const input=document.createElement('input');input.type='file';input.accept='image/*';input.setAttribute('aria-label','上传第'+(i+1)+'张图片');input.addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;await putImage(a+'-'+i,await compress(file));renderAdminSlots()});el.appendChild(input);if(current){const del=document.createElement('button');del.type='button';del.textContent='删除此图片';del.onclick=async()=>{await delImage(a+'-'+i);renderAdminSlots()};el.appendChild(del)}host.appendChild(el)}}
+async function renderAdminSlots(){const version=++adminRenderVersion,a=adminActive;const host=document.getElementById('adminSlots');host.replaceChildren();for(let i=0;i<6;i++){const el=document.createElement('div');el.className='admin-slot';const current=await getImage(a+'-'+i);if(version!==adminRenderVersion)return;const title=document.createElement('div');title.textContent='FILE '+(a+1)+' / '+String(i+1).padStart(2,'0');title.style.fontSize='10px';el.appendChild(title);if(current){const im=document.createElement('img');im.alt='第'+(i+1)+'张证物';el.appendChild(im)}else{let empty=document.createElement('div');empty.className='admin-empty';empty.textContent='＋ 添加图片';el.appendChild(empty)}const input=document.createElement('input');input.type='file';input.accept='image/*';input.setAttribute('aria-label','上传第'+(i+1)+'张图片');input.addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;await putImage(a+'-'+i,await compress(file));renderAdminSlots()});el.appendChild(input);if(current){const del=document.createElement('button');del.type='button';del.textContent='删除此图片';del.onclick=async()=>{await delImage(a+'-'+i);renderAdminSlots()};el.appendChild(del)}host.appendChild(el);if(current)DetectiveImages.bind(el.querySelector('img'),current,el)}}
 
 
 async function loadPosterCovers(){
@@ -58,20 +72,20 @@ async function loadPosterCovers(){
  const face=document.querySelector('[data-section="'+i+'"] .fface');
  const img=face.querySelector('img');const pic=await getImage('poster-cover-'+i);
  face.classList.toggle('has-cover',!!pic);img.hidden=!pic;
- if(pic)img.src=pic;else img.removeAttribute('src');
+ if(pic)DetectiveImages.bind(img,pic,face);else{DetectiveImages.clear(img);img.removeAttribute('src');}
  }
 }
 async function renderCoverEditor(){
- const host=document.getElementById('coverEditor');host.replaceChildren();
+ const version=++coverRenderVersion;const host=document.getElementById('coverEditor');host.replaceChildren();
  for(let i=0;i<3;i++){
  const el=document.createElement('div');el.className='cover-edit';
  const label=document.createElement('strong');label.textContent=sections[i].name;el.appendChild(label);
- const pic=await getImage('poster-cover-'+i);
- if(pic){const im=document.createElement('img');im.src=pic;im.alt=sections[i].name+'封面';el.appendChild(im)}
+ const pic=await getImage('poster-cover-'+i);if(version!==coverRenderVersion)return;
+ if(pic){const im=document.createElement('img');im.alt=sections[i].name+'封面';el.appendChild(im)}
  const input=document.createElement('input');input.type='file';input.accept='image/*';input.setAttribute('aria-label','替换'+sections[i].name+'卡片封面');
  input.onchange=async()=>{const f=input.files[0];if(!f)return;await putImage('poster-cover-'+i,await compress(f));await loadPosterCovers();renderCoverEditor()};el.appendChild(input);
  if(pic){const del=document.createElement('button');del.textContent='移除封面';del.onclick=async()=>{await delImage('poster-cover-'+i);await loadPosterCovers();renderCoverEditor()};el.appendChild(del)}
- host.appendChild(el);
+ host.appendChild(el);if(pic)DetectiveImages.bind(el.querySelector('img'),pic,el);
  }
 }
 request.addEventListener('success',loadPosterCovers);
@@ -92,7 +106,7 @@ const caseMusicLabel=document.getElementById('caseMusicLabel');
 let caseMusicStarted=false,caseMusicUserPaused=false;
 caseAudio.volume=.55;
 function updateCaseMusic(){const playing=!caseAudio.paused;caseMusicButton.setAttribute('aria-pressed',String(playing));caseMusicButton.setAttribute('aria-label',playing?'暂停背景音乐':'播放背景音乐');caseMusicLabel.textContent=playing?'背景音乐 · 播放中':caseMusicStarted?'背景音乐 · 已暂停':'背景音乐 · 点击播放'}
-function startCaseMusic(){const result=caseAudio.play();if(result)result.catch(updateCaseMusic)}
+function startCaseMusic(){if(!DetectiveCloud.hasLoaded)return;const result=caseAudio.play();if(result)result.catch(updateCaseMusic)}
 function unlockCaseMusic(e){if(e.target instanceof Element&&e.target.closest('#caseMusicToggle'))return;if(!caseMusicStarted&&!caseMusicUserPaused)startCaseMusic()}
 caseAudio.addEventListener('playing',()=>{caseMusicStarted=true;updateCaseMusic();document.removeEventListener('pointerdown',unlockCaseMusic);document.removeEventListener('keydown',unlockCaseMusic)});
 caseAudio.addEventListener('pause',updateCaseMusic);
@@ -103,14 +117,15 @@ startCaseMusic();
 
 const smokeVideo=document.getElementById('caseSmoke');
 smokeVideo.muted=true;smokeVideo.defaultMuted=true;
-function startSmoke(){if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;const playback=smokeVideo.play();if(playback)playback.catch(()=>{})}
+function startSmoke(){if(!DetectiveCloud.hasLoaded||document.hidden)return;if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;const playback=smokeVideo.play();if(playback)playback.catch(()=>{})}
 startSmoke();
+window.addEventListener('detective-cloud-loaded',()=>setTimeout(startSmoke,1800));
 document.addEventListener('pointerdown',()=>{if(smokeVideo.paused)startSmoke()},{passive:true});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)smokeVideo.pause();else startSmoke()});
 
 const embeddedCaseMusic=caseAudio.getAttribute('src');
 const adminMusicStatus=document.getElementById('adminMusicStatus');
-async function restoreSavedMusic(){const saved=await getImage('case-background-music');const source=saved||embeddedCaseMusic;if(caseAudio.getAttribute('src')!==source){caseAudio.src=source;caseMusicStarted=false;if(!caseMusicUserPaused)startCaseMusic()}}
+async function restoreSavedMusic(){const saved=await getImage('case-background-music');const source=saved||embeddedCaseMusic;if(caseAudio.getAttribute('src')!==source){caseAudio.src=source;caseMusicStarted=false}if(!caseMusicUserPaused&&caseAudio.paused)startCaseMusic()}
 request.addEventListener('success',restoreSavedMusic);
 document.getElementById('adminMusicUpload').addEventListener('change',async e=>{
  const file=e.target.files[0];if(!file)return;
@@ -180,4 +195,5 @@ window.addEventListener('detective-cloud-loaded',()=>{
  if(overlay.classList.contains('show'))render();
  if(adminOverlay.classList.contains('show')){renderAdminSlots();renderCoverEditor()}
 });
+window.addEventListener('detective-cloud-error',()=>{if(!DetectiveCloud.hasLoaded&&overlay.classList.contains('show'))render();});
 DetectiveCloud.load().catch(()=>{});

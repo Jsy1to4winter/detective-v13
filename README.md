@@ -57,6 +57,18 @@ GitHub 仓库 Settings → Pages → Source 选择 **Deploy from a branch**，Br
 
 本执行环境到 Supabase 项目的网络请求被代理拒绝。项目所有者已确认初始 SQL 安装、真实主账号登录、证词保存后无痕读取及图片上传后无痕读取成功。新增子链接服务尚需在真实项目安装并验收；当前通过的是模拟接口和嵌入式数据库测试。没有进行微信、Safari 真机或人工听音验证。
 
+## 微信弱网读取与图片重试
+
+公开资料读取与登录 SDK 分离。短暂网络错误、408/429 或常见 5xx 最多尝试三次；每次的 8 秒超时包含 JSON 响应体读取。最终失败保留“重新读取”入口，恢复联网或从后台返回时可重新读取。已有资料刷新失败时明确提示显示的是上次读取结果，不能视为最新云端确认；没有读到资料时不把卷宗显示为空资料。
+
+读取合并并发请求，相同版本不重建图片，避免微信前后台事件打断已有加载。卷宗快速切换使用渲染版本号隔离，资料未读完就打开时保留六个等待位置，读到后自动显示。
+
+卷宗图片、头像、封面和图片预览增加加载反馈，每次图片请求超过 12 秒或失败后有限重试，最后提供单张重载按钮。重试参数只用于下载，数据库中的文件 URL 不变。图片失败不会删除云端资料。
+
+Google 字体从阻塞式 CSS import 改为非阻塞加载，字体与主题样式声明保持原样；云端资料读到前不启动音乐和烟雾下载。脚本与样式增加版本参数，避免微信刷新后混用旧代码。本次更新不需要执行 SQL 或重新部署 Edge Function。
+
+`tests/loading-browser.cjs` 使用真实 Chromium、受控网络响应和虚拟时钟，覆盖外部字体不响应、先点卷宗后收到资料、短暂 503、永久图片失败后手动重试、图片/JSON 响应卡住、网络恢复、同版本刷新保留图片及错误链接。该测试不能证明真机微信或用户所在网络的 GitHub Pages/Supabase 连通性；执行环境对真实地址的请求仍被代理返回 403。
+
 ## 开发测试
 
 在仓库根目录运行：
@@ -72,6 +84,7 @@ node tests/cloud-browser.cjs
 node tests/sql.cjs
 node tests/children-browser.cjs
 node tests/sql-children.cjs
+node tests/loading-browser.cjs
 ```
 
 浏览器测试使用 `/usr/bin/chromium`。默认依赖安装在仓库外 `/tmp/homepage-validation/node_modules/`；可通过 `PLAYWRIGHT_MODULE` 和 `PGLITE_MODULE` 指定相应模块路径，`TEST_URL` 指定本地服务地址。
